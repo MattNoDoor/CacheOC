@@ -40,7 +40,7 @@ void initCache() {
 
 void accessL1(uint32_t address, uint8_t *data, uint32_t mode) {
 
-  uint32_t offset, index, tag, MemAddress, word_address;
+  uint32_t offset, index, tag, MemAddress, word_address, DirtyAddress;
   uint8_t TempBlock[BLOCK_SIZE];
 
   uint8_t index_bits = 8, offset_bits = 6, offset_byte_bits = 2;
@@ -55,6 +55,7 @@ void accessL1(uint32_t address, uint8_t *data, uint32_t mode) {
   index = (address >> offset_bits) & ((1 << index_bits) - 1);
   offset = address & ((1 << offset_bits) - 1);
   word_address = offset >> offset_byte_bits;
+  word_address = word_address << offset_byte_bits;
 
   CacheLine *Line = &L1Cache.line[index];
 
@@ -67,7 +68,8 @@ void accessL1(uint32_t address, uint8_t *data, uint32_t mode) {
     accessDRAM(MemAddress, TempBlock, MODE_READ); // get new block from DRAM
    
     if ((Line->Valid) && (Line->Dirty)) { // line has dirty block
-      accessDRAM(MemAddress, &(L1Cache.line[index].words[0]), MODE_WRITE); // then write back old block
+      DirtyAddress = ((Line->Tag << index_bits) + index) << offset_bits;
+      accessDRAM(DirtyAddress, &(L1Cache.line[index].words[0]), MODE_WRITE); // then write back old block
     }
 
     memcpy(&(L1Cache.line[index].words[0]), TempBlock,
@@ -78,12 +80,12 @@ void accessL1(uint32_t address, uint8_t *data, uint32_t mode) {
   } // if miss, then replaced with the correct block
 
   if (mode == MODE_READ) {    // read data from cache line
-    memcpy(data, &L1Cache.line[index].words[word_address * WORD_SIZE], WORD_SIZE);
+    memcpy(data, &L1Cache.line[index].words[word_address], WORD_SIZE);
     time += L1_READ_TIME;
   }
 
   if (mode == MODE_WRITE) { // write data from cache line
-    memcpy(&L1Cache.line[index].words[word_address * WORD_SIZE], data, WORD_SIZE);
+    memcpy(&L1Cache.line[index].words[word_address], data, WORD_SIZE);
     time += L1_WRITE_TIME;
     Line->Dirty = 1;
   }
